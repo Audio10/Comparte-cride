@@ -259,7 +259,7 @@ admin.site.register(User, CustomUserAdmin)
 
 Utilizaremos una herramienta instalada la cual es **django_extensions**.
 
-### Importar datos de un Fixtures
+## Importar datos de un Fixtures
 
 Para importar los datos se crea una carpeta **Fixtures** la cual contiene un archivo json del cual se sacara la data.
 
@@ -574,7 +574,34 @@ def create_circle(request):
 
 
 
+## Buenas prácticas para el diseño de un API REST
 
+Uno de los prerequisitos para crear APIs es conocer el protocolo HTTP. Verbos, métodos, estados y las cabeceras.
+
+Van a estar diseñando una interfaz **para programadores** para que otros programadores puedan interactuar, nos olvidaremos de los templates para que un equipo de Frontend se encargue de eso. Debemos tener la perspectiva de un usuario de API y no la de un diseñador de API.
+
+El **objetivo** es algo que siempre se deben preguntar qué problema deben de resolverle al usuario final nuestra API. El **éxito** de nuestra API se mide por qué tan rápido nuestros compañeros pueden usarla.
+
+**REST**: Es una serie de principio de cómo diseñar una web service. Un estilo de arquitectura.
+
+### **HTTP Status Code**:
+
+- 201: Creado
+- 304: No modificado
+- 400: Bad request( Hiciste algo mal.)
+- 404: No encontrado
+- 401: No autorizado
+- 403: Prohibido o restringido.
+- 500: Internal Server Error (Yo hice algo mal.)
+
+### **Pro tips**:
+
+- SSL
+- Caché
+- Valida
+- CSRF o Cross-Site Request Forgery
+- Limita los requests
+- Complementa tu API con un SDK
 
 ## Parsers
 
@@ -587,6 +614,315 @@ Especifican como sale el contenido y especifican esto con el Header **Accept**
 
 
 ## APIView
+
+
+
+## Autenticación y tipos de autenticación
+
+La autenticación es la parte de asociar una petición a un usuario y después al objeto request se le asigna dos propiedades como request.user y request.auth
+
+### View
+
+```python
+"""Users views."""
+
+# Django REST Framework
+# This is the import for inherit the functionality for the Class based view.
+from rest_framework.views import APIView
+from rest_framework import status
+from rest_framework.response import Response
+
+# Serializers
+from cride.users.serializers import (
+    UserLoginSerializer,
+    UserModelSerializer
+)
+
+class UserLoginAPIView(APIView):
+    """User login API views."""
+    
+    def post(self, request, *args, **kwargs):
+        """Handle HTTP POST request."""
+        serializer = UserLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user, token = serializer.save()
+        data = {
+            'user': UserModelSerializer(user).data,
+            'access_token': token
+        }
+        return Response(data, status=status.HTTP_201_CREATED)
+```
+
+- Las vistas basadas en clases son extensiones de clases especializadas, en este caso **APIView** es la vista de la cual debemos extender para generar una View basada en clase para Rest Framework. En esta ya estan creados los metodos HTTP para las peticiones y solo hay que sobre escribirlos.
+- Este ya ocupa el request de Django REST Framework.
+
+
+
+### Serializers
+
+```python
+"""Users serializers."""
+
+# Django
+from django.contrib.auth import authenticate
+
+# Django REST Framework
+from rest_framework import serializers
+from rest_framework.authtoken.models import Token
+
+# Models
+from cride.users.models import User
+
+# 1)
+class UserModelSerializer(serializers.ModelSerializer):
+    """User model serializer."""
+    
+    class Meta:
+        """Meta class."""
+        
+        model = User
+        fields = (
+            'username',
+            'first_name',
+            'last_name',
+            'email',
+            'phone_number'
+        )
+
+
+# 2) Generacion de token.
+class UserLoginSerializer(serializers.Serializer):
+    """User login serializer.
+    
+    Handle the login request data.
+    """
+    
+    email = serializers.EmailField()
+    password = serializers.CharField(min_length=8, max_length=64)
+    
+    def validate(self, data):
+        """Check credentials."""
+        user = authenticate(username=data['email'], password=data['password'])
+        if not user:
+            raise serializers.ValidationError('Invalid credentials')
+        self.context['user'] = user
+        return data
+    
+    def create(self, data):
+        """Generate or retrieve new token."""
+        token, created = Token.objects.get_or_create(user=self.context['user'])
+        return self.context['user'], token.key
+```
+
+1. **ModelSerializer** es una clase especializada que te permite convertir un modelo a un Serializer, lo cual facilita la creación del serializer basado en un Modelo previamente establecido. Se debe especificar el modelo del cual se creara el template y los fields que se usaran.
+
+2. Para la autenticación se ocupara la que viene con Django usando authenticate, la cual compara con nuestro modelo de Usuario especificado para el admin.
+
+   -  Se  valida metiante el authenticate, el cual retorna un usuario si este es authenticado correctamente.
+
+   - Si no existe el usuario o no coinciden los datos regresa none.
+
+   - Todos los serializers tienen un objeto llamado **contex**, en el cual se guardan argumentos. En este caso se creo un argumento llamado user para poder guardar el usuario en caso de que sea encontrado.
+
+   - Se genera un Token basado en el usuario, este se guarda en base de datos y en caso de ya existir lo reenvia, es decir siempre sera el mismo.
+
+   - Para acceder al valor del token se utiliza el atributo **key**.
+
+     
+
+
+
+
+
+## Extra fields on many-to-many relationships. 
+
+[Info
+
+```python
+"""Membership model."""
+
+# Django
+from django.db import models
+
+# Utilities
+from cride.utils.models import CRideModel
+
+
+class Membership(CRideModel):
+    """Membership model.
+    
+    A membership is the table that holds the relationship between
+    a user and a circle.
+    """
+    
+    user = models.ForeignKey('users.User', on_delete=models.CASCADE)
+    profile = models.ForeignKey('users.Profile', on_delete=models.CASCADE)
+    circle = models.ForeignKey('circles.Circle', on_delete=models.CASCADE)
+    
+    is_admin = models.BooleanField(
+        'circle admin',
+        default=False,
+        help_text="Circle admins can update the circle's data and manage its members."
+    )
+    
+    # Invitations
+    used_invitations = models.PositiveSmallIntegerField(default=0)
+    remaining_invitation = models.PositiveSmallIntegerField(default=0)
+    invited_by = models.ForeignKey(
+        'users.User',
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name='invited_by'
+    )
+    
+    # Stats
+    rides_taken = models.PositiveIntegerField(default=0)
+    rides_offered = models.PositiveIntegerField(default=0)
+    
+    # Status
+    is_active = models.BooleanField(
+        'active status',
+        default=True,
+        help_text='Only active users are allowed to interact in the circle.'
+    )
+    
+    def __str__(self):
+        """Return username and circle."""
+        return '@{} at #{}'.format(
+            self.user.username,
+            self.circle.slug_name
+        )
+    
+    
+```
+
+
+
+
+
+```python
+"""Circle model."""
+
+# Django
+from django.db import models
+
+# Utilities
+from cride.utils.models import CRideModel
+
+
+class Circle(CRideModel):
+    """Circle model.
+
+    A circle is a private group where rides are offered and taken
+    by its members. To join a circle a user must receive an unique
+    invitation code from an existing circle member.
+    """
+
+    name = models.CharField('circle name', max_length=140)
+    slug_name = models.SlugField(unique=True, max_length=40)
+
+    about = models.CharField('circle description', max_length=255)
+    picture = models.ImageField(upload_to='circles/pictures', blank=True, null=True)
+    
+    members= models.ManyToManyField(
+        # Referencia
+        'users.User',
+        # Atravez de.
+        through='circles.Membership',
+        # Atravez de que campos estas definiendo la relacion?
+        through_fields=('circle','user')
+    )
+
+    # Stats
+    rides_offered = models.PositiveIntegerField(default=0)
+    rides_taken = models.PositiveIntegerField(default=0)
+
+    verified = models.BooleanField(
+        'verified circle',
+        default=False,
+        help_text='Verified circles are also known as official communities.'
+    )
+
+    is_public = models.BooleanField(
+        default=True,
+        help_text='Public circles are listed in the main page so everyone know about their existence.'
+    )
+
+    is_limited = models.BooleanField(
+        'limited',
+        default=False,
+        help_text='Limited circles can grow up to a fixed number of members.'
+    )
+    members_limit = models.PositiveIntegerField(
+        default=0,
+        help_text='If circle is limited, this will be the limit on the number of members.'
+    )
+
+    def __str__(self):
+        """Return circle name."""
+        return self.name
+
+    class Meta(CRideModel.Meta):
+        """Meta class."""
+
+        ordering = ['-rides_taken', '-rides_offered']
+```
+
+
+
+
+
+## ViewSet
+
+Clase especializada que implementa todas las operaciones CRUD.
+
+
+
+
+
+### Mixin
+
+Una clase que expone métodos y estos métodos pueden ser llamados por otras clases eventualmente.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
