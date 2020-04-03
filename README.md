@@ -874,15 +874,159 @@ class Circle(CRideModel):
 
 ## ViewSet
 
-Clase especializada que implementa todas las operaciones CRUD.
-
-
+Clase especializada que implementa todas las operaciones CRUD. Esta basada en la recopilación de mixins. Y en caso de querer cambiar la funcionalidad o aplicar filtros a **queryset** se pueden sobre escribir los métodos de ViewSet.
 
 
 
 ### Mixin
 
 Una clase que expone métodos y estos métodos pueden ser llamados por otras clases eventualmente.
+
+
+
+### Serializer
+
+Se debe crear un **Serializer** que extienda de **ModelSerializer**, el cual ya es una clase especializada en la cual solo se especifica el **modelo** y los **fields**.
+
+```python
+"""Circle serializers."""
+
+# Django REST Framework
+from rest_framework import serializers
+
+# Model
+from cride.circles.models import Circle
+
+
+class CircleModelSerializer(serializers.ModelSerializer):
+    """Circle model serializer."""
+    
+    class Meta:
+        """Meta class."""
+        
+        model = Circle
+        fields = (
+            'id', 'name','slug_name',
+            'about', 'picture',
+            'rides_offered', 'rides_taken',
+            'verified', 'is_public',
+            'is_limited', 'members_limit'
+        )
+```
+
+
+
+### ViewSet (View)
+
+Un ViewSet es una Vista basa de Clase que extiende la funcionalidad de un CRUD, sin necesidad de sobre extender el modelo. En este solo se especifica el **queryset**, **serializer_class**.
+
+```python
+"""Circle views."""
+
+# Django REST Framework
+from rest_framework import viewsets
+
+# Models 
+from cride.circles.models import Circle
+
+# Serializers
+from cride.circles.serializers import CircleModelSerializer
+
+
+class CircleViewSet(viewsets.ModelViewSet):
+    """Circle view set."""
+    
+    queryset = Circle.objects.all()
+    serializer_class = CircleModelSerializer
+```
+
+
+
+### URLs
+
+Dentro de las URL se aplica el registro de un router, el cual es capas de registrar mediante expresiones regulares un **ViewSet**.
+
+```python
+"""Circles URLs."""
+
+# Django
+from django.urls import path, include
+
+# Django REST Framework
+from rest_framework.routers import DefaultRouter
+
+# Views importando el archivo circles en la carpeta views.
+from .views import circles as circle_views
+
+router = DefaultRouter()
+router.register(r'circles', circle_views.CircleViewSet, basename='circle')
+
+urlpatterns = [
+    path('', include(router.urls))
+]
+```
+
+
+
+## Definir Autorización (Token)
+
+Para agregar autorización a nuestros EndPoints debemos usar implementar en **settings** una configuración especial.
+
+```python
+# Django REST Framework
+REST_FRAMEWORK = {
+    'DEFAULT_RENDERER_CLASSES': (
+        'rest_framework.renderers.JSONRenderer',
+    ),
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication'
+    ]
+}
+```
+
+Mientras que en la vista se debe definir la variable **permission_classes**.
+
+```python
+"""Circle views."""
+
+# Django REST Framework
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
+
+# Models 
+from cride.circles.models import Circle
+
+# Serializers
+from cride.circles.serializers import CircleModelSerializer
+
+
+class CircleViewSet(viewsets.ModelViewSet):
+    """Circle view set."""
+    
+    queryset = Circle.objects.all()
+    serializer_class = CircleModelSerializer
+    permission_classes = (IsAuthenticated,)
+```
+
+
+
+## Paginación
+
+
+
+```python
+# Django REST Framework
+REST_FRAMEWORK = {
+    'DEFAULT_RENDERER_CLASSES': (
+        'rest_framework.renderers.JSONRenderer',
+    ),
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication'
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
+    'PAGE_SIZE': 3,
+}
+```
 
 
 
