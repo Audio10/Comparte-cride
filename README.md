@@ -615,31 +615,68 @@ Especifican como sale el contenido y especifican esto con el Header **Accept**
 
 ## APIView
 
+Es una clase especializada de la cual heredamos, esta ocupa por default el **request** de Django REST Framework y no el **HttpRequest** de Django.
+
+Para la implementacion es recomendable crear un modulo de **views** el cual contendra los siguientes archivos.
+
+- __init__.py: Donde se importan los archivos que contienen las vistas. Y realizar un import mas general.
+
+- Archivos.py: Los cuales contienen las vistas  y se importan en el init.
+
+  
+
+## App de usuarios.
+
+Esta APP va orientada a realizar las siguientes funciones.
+
+1. Login
+2. SignUp
+3. Verify User from email confirmation.
 
 
-## Autenticación y tipos de autenticación
 
-La autenticación es la parte de asociar una petición a un usuario y después al objeto request se le asigna dos propiedades como request.user y request.auth
+#### __init__.py
 
-### View
+En este archivo se importan las vistas provenientes de los archivos que contiene el modulo **views**,
+
+```python
+from .users import *
+```
+
+#### Users.py
+
+Este archivo es nombrado como la APP, por lo general los serializer, modelos llevan el mismo nombre que la app y llevan la misma secuencia.
+
+**APIView.**
+
+- Las vistas basadas en clases son extensiones de clases especializadas, en este caso **APIView** es la vista de la cual debemos extender para generar una View basada en clase para Rest Framework. En esta ya estan creados los metodos HTTP para las peticiones y solo hay que sobre escribirlos.
+- Este ya ocupa el request de Django REST Framework.
 
 ```python
 """Users views."""
 
 # Django REST Framework
+
 # This is the import for inherit the functionality for the Class based view.
 from rest_framework.views import APIView
 from rest_framework import status
+# You need to import de Response from rest_framework.
 from rest_framework.response import Response
 
 # Serializers
 from cride.users.serializers import (
     UserLoginSerializer,
-    UserModelSerializer
+    UserModelSerializer,
+    UserSignUpSerializer,
+    AccountVerificationSerializer
 )
 
+
 class UserLoginAPIView(APIView):
-    """User login API views."""
+    """1.- User login API view.
+    When create a User's Login return the user and a token.
+    And if the User's data is incorrect return the error.
+    """
     
     def post(self, request, *args, **kwargs):
         """Handle HTTP POST request."""
@@ -651,34 +688,85 @@ class UserLoginAPIView(APIView):
             'access_token': token
         }
         return Response(data, status=status.HTTP_201_CREATED)
+
+
+class UserSignUpAPIView(APIView):
+    """User signup API view.
+    It register a new User if the data is not duplicate.
+    """
+    
+    def post(self, request, *args, **kwargs):
+        """Handle HTTP POST request."""
+        serializer = UserSignUpSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        
+        # Extract the data from the UserModelSerializer.
+        data = UserModelSerializer(user).data,
+            
+        return Response(data, status=status.HTTP_201_CREATED)
+
+
+class AccountVerificationAPIView(APIView):
+    """Account verification API view."""
+    
+    def post(self, request, *args, **kwargs):
+        """Handle HTTP POST request."""
+        serializer = AccountVerificationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        data = {'message': 'Congratulations, now go share some rides!'}
+            
+        return Response(data, status=status.HTTP_200_OK)
+    
 ```
 
-- Las vistas basadas en clases son extensiones de clases especializadas, en este caso **APIView** es la vista de la cual debemos extender para generar una View basada en clase para Rest Framework. En esta ya estan creados los metodos HTTP para las peticiones y solo hay que sobre escribirlos.
-- Este ya ocupa el request de Django REST Framework.
 
 
-
-### Serializers
+#### Serializers.
 
 ```python
 """Users serializers."""
 
-# Django
-from django.contrib.auth import authenticate
+# Django 
+# authentica: provide the authenticate for username and password.
+# password_validation: validate that the password is correct.
+from django.contrib.auth import authenticate, password_validation
 
 # Django REST Framework
 from rest_framework import serializers
+# Model for create a Token.
 from rest_framework.authtoken.models import Token
 
-# Models
-from cride.users.models import User
+# Validators
+from rest_framework.validators import UniqueValidator
+from django.core.validators import RegexValidator
 
-# 1)
+# Models
+from cride.users.models import User, Profile
+
+# Email
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+
+# JWT
+import jwt
+
+# Utilities
+from django.conf import settings
+from django.utils import timezone
+from datetime import timedelta
+
+
 class UserModelSerializer(serializers.ModelSerializer):
-    """User model serializer."""
+    """User model serializer.
+     ModelSerializer is a class that implements the Model and fields for Us.
+    """
     
     class Meta:
-        """Meta class."""
+        """Meta class.
+        In this method we override the class Meta and implements the model and de fields 				 that we are goint to use.
+        """
         
         model = User
         fields = (
@@ -690,7 +778,91 @@ class UserModelSerializer(serializers.ModelSerializer):
         )
 
 
-# 2) Generacion de token.
+class UserSignUpSerializer(serializers.Serializer):
+    """User sign up serializer.
+    
+    Handle sign up data validation and user/profile creation.
+    """
+    
+    email = serializers.EmailField(
+        validators=[
+            UniqueValidator(queryset=User.objects.all())
+        ]
+    )
+    
+    username = serializers.CharField(
+        min_length=4,
+        max_length=20,
+        validators=[UniqueValidator(queryset=User.objects.all())]
+    )
+    
+    # Phone number
+    phone_regex = RegexValidator(
+        regex=r'\+?1?\d{9,15}$',
+        message="Phone number must be entered in the format: +999999999. Up to 15 digits allowed."
+    )
+    
+    phone_number = serializers.CharField(
+        validators=[phone_regex]
+    )
+    
+    # Password
+    password = serializers.CharField(min_length=8, max_length=64)
+    password_confirmation = serializers.CharField(min_length=8, max_length=64)
+    
+    # Name 
+    first_name = serializers.CharField(min_length=2, max_length=30)
+    last_name = serializers.CharField(min_length=2, max_length=30)
+    
+    def validate(self, data):
+        """Verify passwords match."""
+        passwd = data['password']
+        passwd_conf = data['password_confirmation']
+        if passwd != passwd_conf:
+            raise serializers.ValidationError("Passwords don't match.")
+        
+        # Django's Validator for passwords.
+        password_validation.validate_password(passwd)
+        return data
+    
+    def create(self, data):
+        """Handle user and profile creation.
+        It is called when yout user the save method.
+        Delete the password_confirmation field from the data after validate.
+        This Create a User, and put is_verified False for default, create a Prifile for 				the user and implements the send_confirmation_email method.
+        """
+        data.pop('password_confirmation')
+        user = User.objects.create_user(**data, is_verified=False)
+        Profile.objects.create(user=user)
+        self.send_confirmation_email(user)
+        return user
+    
+    def send_confirmation_email(self, user):
+        """Send account verification link to given user."""
+        verification_token = self.gen_verification_token(user)
+        subject = 'Welcome @{}! Verify your account to start using Comparte Ride'.format(user.username)
+        from_email = 'Comparte Ride <noreply@comparteride.com>'
+        content = render_to_string(
+            'emails/users/account_verification.html',
+            {'token': verification_token, 'user': user}
+        )
+        msg = EmailMultiAlternatives(subject, content, from_email, [user.email])
+        msg.attach_alternative(content, "text/html")
+        msg.send()
+
+    def gen_verification_token(self, user):
+        """Create JWT token that the user can use to verify its account."""
+        exp_date = timezone.now() + timedelta(days=3)
+        payload = {
+            'user': user.username,
+            'exp': int(exp_date.timestamp()), # Expiration date Timestamp integer.
+            'type': 'email_confirmation'
+        }
+        
+        token = jwt.encode(payload, settings.SECRET_KEY, algorithm='HS256')
+        return token.decode()
+    
+
 class UserLoginSerializer(serializers.Serializer):
     """User login serializer.
     
@@ -705,6 +877,8 @@ class UserLoginSerializer(serializers.Serializer):
         user = authenticate(username=data['email'], password=data['password'])
         if not user:
             raise serializers.ValidationError('Invalid credentials')
+        if not user.is_verified:
+            raise serializers.ValidationError('Account is not active yet :(')
         self.context['user'] = user
         return data
     
@@ -712,6 +886,35 @@ class UserLoginSerializer(serializers.Serializer):
         """Generate or retrieve new token."""
         token, created = Token.objects.get_or_create(user=self.context['user'])
         return self.context['user'], token.key
+    
+    
+class AccountVerificationSerializer(serializers.Serializer):
+    """Account verification serializer."""
+        
+    token = serializers.CharField()
+        
+    def validate_token(self, data):
+        """Verify token is valid."""
+        try:
+            payload = jwt.decode(data, settings.SECRET_KEY, algorithms=['HS256'])
+        except jwt.ExpiredSignatureError:
+            raise serializers.ValidationError('Verification link has expired.')
+        except jwt.PyJWTError:
+            raise serializers.ValidationError('Invalid token2')   
+        if payload['type'] != 'email_confirmation':
+            raise serializers.ValidationError('Invalid token')
+            
+        self.context['payload'] = payload
+        return data
+        
+    def save(self):
+        """Update user's verified status."""
+        payload = self.context['payload']
+        user = User.objects.get(username=payload['user'])
+        user.is_verified=True
+        user.save()
+    
+    
 ```
 
 1. **ModelSerializer** es una clase especializada que te permite convertir un modelo a un Serializer, lo cual facilita la creación del serializer basado en un Modelo previamente establecido. Se debe especificar el modelo del cual se creara el template y los fields que se usaran.
@@ -730,13 +933,11 @@ class UserLoginSerializer(serializers.Serializer):
 
      
 
-
-
-
-
 ## Extra fields on many-to-many relationships. 
 
-[Info
+
+
+### Membership model
 
 ```python
 """Membership model."""
@@ -798,7 +999,7 @@ class Membership(CRideModel):
 
 
 
-
+### Circle model.
 
 ```python
 """Circle model."""
@@ -867,8 +1068,6 @@ class Circle(CRideModel):
 
         ordering = ['-rides_taken', '-rides_offered']
 ```
-
-
 
 
 
@@ -1030,27 +1229,215 @@ REST_FRAMEWORK = {
 
 
 
+## Creación de circulos
+
+
+
+```python
+"""Circle views."""
+
+# Django REST Framework
+from rest_framework import viewsets
+
+# Permissions
+from cride.circles.permissions import IsCircleAdmin
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import MethodNotAllowed
+
+# Serializers
+from cride.circles.serializers import CircleModelSerializer
+
+# Models
+from cride.circles.models import Circle, Membership
+
+
+class CircleViewSet(viewsets.ModelViewSet):
+    """Circle view set."""
+
+    serializer_class = CircleModelSerializer
+
+    def get_queryset(self):
+        """Restrict list to public-only."""
+        queryset = Circle.objects.all()
+        # Introspective action allowance.
+        if self.action == 'list':
+            return queryset.filter(is_public=True)
+        return queryset
+    
+    def get_permissions(self):
+        """Assign permissions based on action."""
+        permissions = [IsAuthenticated]
+        if self.action in ['update', 'partial_update']:
+            permissions.append(IsCircleAdmin)
+        return [permission() for permission in permissions]
+
+    def perform_create(self, serializer):
+        """Assign circle admin."""
+        circle = serializer.save()
+        # The user is in the request.user
+        user = self.request.user
+        profile = user.profile
+        # Create a Membership.
+        Membership.objects.create(
+            user=user,
+            profile=user.profile,
+            circle=circle,
+            is_admin=True,
+            remaining_invitations=10
+        )
+    
+    def destroy(self, request, pk=None):
+        raise MethodNotAllowed('DELETE')
+```
+
+### get_queryset.
+
+Es el metodo donde se define el queryset. Dentro de este se puede especificar la logica especial en este caso el queryset cuando el action es list, solo se mostraran los círculos que son publicos.
+
+### perform_create
+
+**ModelViewSet** implementa el metodo **create** el cual especifica el serializer y lo valida, pero dentro de este metodo se llama **perform_create** que es el lugar en donde se debe escribir la lógica, su unica funcionalidad antes de sobreescribirlo es llamar el metodo **save** del serializer.
+
+### destroy
+
+Metodo del **ModelViewSet** en el se escribe la logica del **Delete** pero en este caso se va a establecer que es un metodo no permitido ya que nadie puede eliminar los circulos. Se implementa **MethodNotAllowed** proveniente de **rest_framework.exceptions** para establecer el raise de que este metodo no es permitido.
+
+### get_permissions
 
 
 
 
 
+## Validacion Circulo es limitado.
+
+Dentro del serializer se crea una validacion en la cual se especifica que si un circulo es limitado, debe establecer cual es el limite. Y si alguno de los dos esta presente el circulo es limitado y deben proporcionar ambos campos.
+
+```python
+"""Circle serializers."""
+
+# Django REST Framework
+from rest_framework import serializers
+
+# Model
+from cride.circles.models import Circle
+
+
+class CircleModelSerializer(serializers.ModelSerializer):
+    """Circle model serializer."""
+    
+    members_limit = serializers.IntegerField(
+        required=False,
+        min_value=10,
+        max_value=32000
+    )
+    
+    is_limited = serializers.BooleanField(default=False)
+    
+    class Meta:
+        """Meta class."""
+        
+        model = Circle
+        fields = (
+            'id', 'name','slug_name',
+            'about', 'picture',
+            'rides_offered', 'rides_taken',
+            'verified', 'is_public',
+            'is_limited', 'members_limit'
+        )
+        
+        read_only_fields = (
+            'is_public',
+            'verified',
+            'rides_offered',
+            'rides_taken',
+        )
+    
+    def validate(self, data):
+        """Ensure both members_limit and is_limited are present."""
+        members_limit = data.get('members_limit', None)
+        is_limited = data.get('is_limited', False)
+        if is_limited ^ bool(members_limit):
+            raise serializers.ValidationError('If circle is limited, a member limit must be provided')
+        
+        return data
+```
 
 
 
+## Update de círculo, custom permissions y DRF Mixins
+
+Creacion de un permiso custom, limitar update a solo administradores y eliminacion de posibilidad de borrar un Circulo.
 
 
 
+### Evitar metodo Delete.
+
+Hay dos formas de delimitar los metodos HTTP permitidos.
+
+1. En vez de importar ModelViewSet, solo se extienden los Mixins que lo componen y queremos utilizar.
+
+2. Sobre escribir los metodos e implementar excepción NotAllowed.
+
+   ```python
+       def destroy(self, request, pk=None):
+           raise MethodNotAllowed('DELETE')
+   ```
 
 
 
+### Creacion Permiso Custom.
+
+Se crea un modulo de permisos y se generan estos mismos.
+
+Para crear un permiso Custom se implementa la clase BasePermission, proveniente de **rest_framework.permissions**. 
+
+Se sobre escribe el metodo **has_object_permission**. Este permiso valida que eres administrador y estas activo.
+
+```python
+"""Circles permission classes."""
+
+# Django REST Framework
+from rest_framework.permissions import BasePermission
+
+# Models
+from cride.circles.models import Membership
+
+class IsCircleAdmin(BasePermission):
+    """Allow acces. only to circle admins."""
+    
+    def has_object_permission(self, request, view, obj):
+        """Verify user have a membership in the obj."""
+        try:
+            Membership.objects.get(
+                user=request.user,
+                circle=obj,
+                is_admin=True,
+                is_active=True
+            )
+        except Membership.DoesNotExist:
+            return False
+        return True
+```
 
 
 
+#### Asignacion de permisos 
 
 
 
-
+```python
+def get_permissions(self):
+        """Assign permissions based on action."""
+    	
+      	# Array for permissions
+        permissions = [IsAuthenticated]
+        # filter for Introspective actions. When is update or partial you need to be a Adminsitrador de circulo. If you are a admin append the permission for admin.
+        if self.action in ['update', 'partial_update']:
+            permissions.append(IsCircleAdmin)
+        
+        # Execute the permissions.
+        return [permission() for permission in permissions]
+```
 
 
 
@@ -1152,4 +1539,3 @@ REST_FRAMEWORK = {
 
 ### Importar datos de fixtures.
 
-`docker-compose run --rm django python manage.py loaddata cride/circles/fixtures/circles.json`
