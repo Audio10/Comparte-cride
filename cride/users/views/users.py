@@ -1,10 +1,11 @@
 """Users views."""
 
-# Django REST Framework
-# This is the import for inherit the functionality for the Class based view.
-from rest_framework.views import APIView
-from rest_framework import status
+# Django REST Framework we use viewsets form implements actions.
+from rest_framework import status, viewsets
 from rest_framework.response import Response
+
+# Actions
+from rest_framework.decorators import action
 
 # Serializers
 from cride.users.serializers import (
@@ -14,11 +15,14 @@ from cride.users.serializers import (
     AccountVerificationSerializer
 )
 
-class UserLoginAPIView(APIView):
-    """User login API view."""
-    
-    def post(self, request, *args, **kwargs):
-        """Handle HTTP POST request."""
+class UserViewSet(viewsets.GenericViewSet):
+    """User view set.
+    Handle sign up, login and account verification.
+    """
+
+    @action(detail=False, methods=['POST'])
+    def login(self, request):
+        """User login. """
         serializer = UserLoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user, token = serializer.save()
@@ -28,12 +32,9 @@ class UserLoginAPIView(APIView):
         }
         return Response(data, status=status.HTTP_201_CREATED)
 
-
-class UserSignUpAPIView(APIView):
-    """User signup API view."""
-    
-    def post(self, request, *args, **kwargs):
-        """Handle HTTP POST request."""
+    @action(detail=False, methods=['POST'])
+    def signup(self, request):
+        """User signup."""
         serializer = UserSignUpSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
@@ -41,12 +42,9 @@ class UserSignUpAPIView(APIView):
             
         return Response(data, status=status.HTTP_201_CREATED)
 
-
-class AccountVerificationAPIView(APIView):
-    """Account verification API view."""
-    
-    def post(self, request, *args, **kwargs):
-        """Handle HTTP POST request."""
+    @action(detail=False, methods=['POST'])
+    def verify(self, request):
+        """Account verification."""
         serializer = AccountVerificationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()

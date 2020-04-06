@@ -1255,6 +1255,8 @@ class CircleViewSet(viewsets.ModelViewSet):
     """Circle view set."""
 
     serializer_class = CircleModelSerializer
+    # Field to Research a circle, ID is the Default field if you don't specify this field.
+    lookup_field = 'slug_name'
 
     def get_queryset(self):
         """Restrict list to public-only."""
@@ -1441,11 +1443,101 @@ def get_permissions(self):
 
 
 
+## Creacion de acciones extra para routing.
 
+Existen dos tipos de acciones las que son de detalle y las que no lo son.
 
+**De detalle:** Parten apartir de un ID o lookup_field.
 
+### Actualizando APP Usuarios a ViewSet.
 
+En este caso se ocupara **GenericViewSet** ya que no tenemos preferencia en algun modelo de este mismo.
 
+```python
+"""Users views."""
+
+# Django REST Framework we use viewsets form implements actions.
+from rest_framework import status, viewsets
+from rest_framework.response import Response
+
+# Actions
+from rest_framework.decorators import action
+
+# Serializers
+from cride.users.serializers import (
+    UserLoginSerializer,
+    UserModelSerializer,
+    UserSignUpSerializer,
+    AccountVerificationSerializer
+)
+
+class UserViewSet(viewsets.GenericViewSet):
+    """User view set.
+    Handle sign up, login and account verification.
+    """
+
+    # It's not a detail action, and we are using post verb.
+    @action(detail=False, methods=['POST'])
+    def login(self, request):
+        """User login. """
+        serializer = UserLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user, token = serializer.save()
+        data = {
+            'user': UserModelSerializer(user).data,
+            'access_token': token
+        }
+        return Response(data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['POST'])
+    def signup(self, request):
+        """User signup."""
+        serializer = UserSignUpSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        data = UserModelSerializer(user).data,
+            
+        return Response(data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['POST'])
+    def verify(self, request):
+        """Account verification."""
+        serializer = AccountVerificationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        data = {'message': 'Congratulations, now go share some rides!'}
+            
+        return Response(data, status=status.HTTP_200_OK)
+```
+
+#### Routing
+
+En este caso como en el **ModelViewSet** ocupamos el routing por medio de **DefaultRouter**, Pero el path sera **users/NombreFuncion/**. En este caso con el codigo escrito anteriormente tendremos las siguientes URL.
+
+1. localhost:8000/users/signup/
+2. localhost:8000/users/login/
+3. localhost:8000/users/verify/
+
+```python
+"""Users URLs."""
+
+# Django
+from django.urls import path, include
+
+# Django REST Framework
+from rest_framework.routers import DefaultRouter
+
+# Views
+from .views import users as user_views
+
+router = DefaultRouter()
+
+router.register(r'users', user_views.UserViewSet, basename='users')
+
+urlpatterns = [
+    path('', include(router.urls))
+]
+```
 
 
 
@@ -1535,7 +1627,4 @@ def get_permissions(self):
 5. docker rm -f cride_django
 6. docker compose run --rm --service -ports django
 
-
-
-### Importar datos de fixtures.
 
