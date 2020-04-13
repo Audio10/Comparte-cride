@@ -14,6 +14,9 @@ from django.core.validators import RegexValidator
 # Models
 from cride.users.models import User, Profile
 
+# Serializer THIS SERIALIZER ALLOW US SEE ALL THE INFORMATION FROM DE PROFILE.
+from cride.users.serializers.profiles import ProfileModelSerializer
+
 # Email
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
@@ -29,6 +32,9 @@ from datetime import timedelta
 
 class UserModelSerializer(serializers.ModelSerializer):
     """User model serializer."""
+
+    # profile redefinition this allow us see all the data from de profile, and it's only reading.
+    profile = ProfileModelSerializer(read_only=True)
     
     class Meta:
         """Meta class."""
@@ -39,7 +45,8 @@ class UserModelSerializer(serializers.ModelSerializer):
             'first_name',
             'last_name',
             'email',
-            'phone_number'
+            'phone_number',
+            'profile'
         )
 
 
@@ -93,7 +100,7 @@ class UserSignUpSerializer(serializers.Serializer):
     def create(self, data):
         """Handle user and profile creation."""
         data.pop('password_confirmation')
-        user = User.objects.create_user(**data, is_verified=False)
+        user = User.objects.create_user(**data, is_verified=False, is_client=True)
         Profile.objects.create(user=user)
         self.send_confirmation_email(user)
         return user

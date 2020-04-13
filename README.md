@@ -1541,11 +1541,83 @@ urlpatterns = [
 
 
 
+## Retrive User
+
+En este caso se reescribe el metodo retrieve. Se recibe la response por defecto y se agrega al la respuesta los circulos a los que pertenece el Usuario aplicando el Serializer correspondiente.
+
+**NOTA:** Recordar que **.data** retorna la informacion preconstruida por el serializer.
+
+```python
+def retrieve(self, request, *args, **kwargs):
+        """Add extra data to the response."""
+        response = super(UserViewSet, self).retrieve(request, *args, **kwargs)
+        circles = Circle.objects.filter(
+            members=request.user,
+            membership__is_active=True
+        )
+        data = {
+            'user': response.data,
+            'circles': CircleModelSerializer(circles, many=True).data
+        }
+    
+        response.data = data
+        return response
+```
 
 
 
+## Update User Data
+
+Para actualizar datos de algun usuario es necesario aplicar **mixins.UpdateModelMixin** la cual es una clase especializada para actualizaciones. Se aplica la regla dentro de los permisos para que solo  el propietario de la cuenta pueda actualizar los datos del mismo usuario. 
+
+```python
+class UserViewSet(viewsets.GenericViewSet, mixins.RetrieveModelMixin, mixins.UpdateModelMixin):
+    """User view set.
+    Handle sign up, login and account verification.
+    """
+
+    queryset = User.objects.filter(is_active=True, is_client=True)
+    serializer_class = UserModelSerializer
+    lookup_field = 'username'
+
+    def get_permissions(self):
+        """Assign permissions based on action."""
+        if self.action in ['signup', 'login', 'verify']:
+            permissions = [AllowAny]
+        elif self.action in ['retrieve', 'update', 'partial_update']:
+            permissions = [IsAuthenticated, IsAccountOwner]
+        else:
+            permissions = [IsAuthenticated]
+        return [p() for p in permissions]
+        
+
+```
 
 
+
+## Update Profile Data.
+
+Se anexa la URL: {{host}}/users/juan/profile/ la cual esta destinada a actualizar el profile del usuario mediante el lookup_field. Aplica la recollecion
+
+
+
+```python
+    @action(detail=True, methods=['PUT','PATCH'])
+    def profile(self, request, *args, **kwargs):
+        """Update  profile data."""
+        user = self.get_object()
+        profile = user.profile
+        partial = request.method = 'PATCH'
+        serializer = ProfileModelSerializer(
+            profile,
+            data=request.data,
+            partial=partial
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        data = UserModelSerializer(user).data
+        return Response(data)
+```
 
 
 
