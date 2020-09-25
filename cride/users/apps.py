@@ -1,6 +1,6 @@
 """Users app."""
 
-# Django
+# Django
 from django.apps import AppConfig
 
 
