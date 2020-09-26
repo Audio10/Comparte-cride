@@ -9,7 +9,6 @@ from cride.utils.models import CRideModel
 
 class Circle(CRideModel):
     """Circle model.
-
     A circle is a private group where rides are offered and taken
     by its members. To join a circle a user must receive an unique
     invitation code from an existing circle member.
@@ -20,14 +19,8 @@ class Circle(CRideModel):
 
     about = models.CharField('circle description', max_length=255)
     picture = models.ImageField(upload_to='circles/pictures', blank=True, null=True)
-    
-    members= models.ManyToManyField(
-        'users.User',
-        through='circles.Membership',
-        through_fields=('circle','user')
-    )
 
-    # Stats
+    # Stats
     rides_offered = models.PositiveIntegerField(default=0)
     rides_taken = models.PositiveIntegerField(default=0)
 
