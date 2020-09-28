@@ -1,6 +1,6 @@
 """User model."""
 
-# Django
+# Django
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.core.validators import RegexValidator
@@ -30,9 +30,6 @@ class User(CRideModel, AbstractUser):
     )
     phone_number = models.CharField(validators=[phone_regex], max_length=17, blank=True)
 
-    USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['username', 'first_name', 'last_name']
-
     is_client = models.BooleanField(
         'client',
         default=True,
@@ -47,6 +44,10 @@ class User(CRideModel, AbstractUser):
         default=True,
         help_text='Set to true when the user have verified its email address.'
     )
+
+    # WE SPECIFY THE USERNAME_FIELD AND THE REQUIRED_FIELDS FROM THE AbstractUser Class.
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['username', 'first_name', 'last_name']
 
     def __str__(self):
         """Return username."""
