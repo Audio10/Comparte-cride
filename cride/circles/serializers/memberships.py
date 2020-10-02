@@ -15,6 +15,9 @@ class MembershipModelSerializer(serializers.ModelSerializer):
 
     user = UserModelSerializer(read_only=True)
     invited_by = serializers.StringRelatedField()
+    # The source specify from which field going to get the data. The joined_at is
+    # getting from created.
+
     joined_at = serializers.DateTimeField(source='created', read_only=True)
 
     class Meta:
