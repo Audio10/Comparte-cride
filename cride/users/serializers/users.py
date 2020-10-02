@@ -26,12 +26,17 @@ from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
 
+# Serializers to display the profile.
+from cride.users.serializers.profiles import ProfileModelSerializer
+
 
 class UserModelSerializer(serializers.ModelSerializer):
     """User model serializer.
         THE ModelSerializer IS USED TO USE TO CREATE A TEMPLATE OF THE MODEL.
         To display the data.
     """
+
+    profile = ProfileModelSerializer(read_only=True)
 
     class Meta:
         """Meta class."""
@@ -42,7 +47,8 @@ class UserModelSerializer(serializers.ModelSerializer):
             'first_name',
             'last_name',
             'email',
-            'phone_number'
+            'phone_number',
+            'profile'
         )
 
 
@@ -104,7 +110,7 @@ class UserSignUpSerializer(serializers.Serializer):
             - Send_confirmation_email and return the user.
         """
         data.pop('password_confirmation')
-        user = User.objects.create_user(**data, is_verified=False)
+        user = User.objects.create_user(**data, is_verified=False, is_client=True)
         Profile.objects.create(user=user)
         self.send_confirmation_email(user)
         return user
